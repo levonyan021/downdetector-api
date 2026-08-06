@@ -1,5 +1,46 @@
-const cheerio = require('cheerio');
-const puppeteer = require('puppeteer');
+const fs = require('fs');
+const puppeteer = require('puppeteer-core');
+
+/**
+ * Locate a Chrome/Chromium executable installed on the system.
+ * puppeteer-core does not download its own browser, so we point it at an
+ * existing Chrome install. An explicit path can be forced with the
+ * PUPPETEER_EXECUTABLE_PATH or CHROME_PATH environment variables.
+ * @return {string} Path to the browser executable
+ */
+function findChrome() {
+  const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const candidatesByPlatform = {
+    win32: [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    ],
+    darwin: [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ],
+    linux: [
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/microsoft-edge',
+    ],
+  };
+  const candidates = candidatesByPlatform[process.platform] || [];
+  const found = candidates.find((path) => fs.existsSync(path));
+  if (!found) {
+    // eslint-disable-next-line max-len
+    throw Error('No Chrome/Chromium executable found. Install Chrome or set the PUPPETEER_EXECUTABLE_PATH environment variable.');
+  }
+  return found;
+}
 
 /**
  * Call Downdetector website and get the page content
@@ -8,70 +49,45 @@ const puppeteer = require('puppeteer');
  * @return {Promise<string>} The page content
  */
 async function callDowndetector(company, domain) {
-  const options = process.env.NODE_ENV === 'test' ? { args: ['--no-sandbox'] } : {};
+  const options = {
+    executablePath: findChrome(),
+    headless: true,
+    args: process.env.NODE_ENV === 'test' ? ['--no-sandbox'] : [],
+  };
   const browser = await puppeteer.launch(options);
-  const page = await browser.newPage();
-  // eslint-disable-next-line max-len
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36');
-  await page.goto(`https://downdetector.${domain}/status/${company}/`);
-  const content = await page.content();
-  await browser.close();
-  return content;
-}
-
-/**
- * Get the script tag content from the Downdetector page content
- * @param {string} data Page content
- * @return {string} The content of the script tag
- */
-function getScriptContent(data) {
-  const $ = cheerio.load(data);
-  const scriptElems = $('script[type="text/javascript"]');
-  let res = '';
-  for (const script of scriptElems) {
-    if (script.children?.[0]?.data.includes('{ x:')) {
-      res = script.children[0]?.data; // 5th script on 06/2023
-      break;
-    }
+  try {
+    const page = await browser.newPage();
+    // eslint-disable-next-line max-len
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36');
+    const url = `https://downdetector.${domain}/status/${company}/`;
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    const content = await page.content();
+    return content;
+  } finally {
+    await browser.close();
   }
-  return res;
 }
 
 /**
- * Get array of data from a string
- * @param {string} scriptContent Script content as a string
- * @return {Array} Array of strings each one containing a pair of data
- */
-function getChartPointsString(scriptContent) {
-  return scriptContent.split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.includes('{ x: \''));
-}
-
-/**
- * Convert a string to object with reports and baseline properties
- * @param {string} chartPoints string with dates and values
+ * Extract the chart data points from the Downdetector page content.
+ * Since 2025 the site is a Next.js app and embeds the chart series as RSC
+ * flight data, where each point carries both reports and baseline values:
+ *   {"timestampUtc":"2026-...","reportsValue":25,"baselineValue":19}
+ * The regex tolerates the escaped quotes used inside the flight payload.
+ * @param {string} data Page content
  * @return {Object} Object with reports and baseline properties
  */
-function getChartPointsObject(chartPoints) {
-  return {
-    reports: str2obj(chartPoints.slice(0, 96)),
-    baseline: str2obj(chartPoints.slice(96, 192)),
-  };
-}
-
-/**
- * Convert a string to object with date and value properties
- * @param {string} chartPoints string to convert to object
- * @return {Object} object with date and value properties
- */
-function str2obj(chartPoints) {
-  return chartPoints
-      .map((line) => line
-          .replace(/\{ | \},|'/g, '')
-          .split('x: ').pop()
-          .split(', y: '))
-      .map((tuple) => ({ date: tuple[0], value: +tuple[1] }));
+function getChartPointsObject(data) {
+  // eslint-disable-next-line max-len
+  const re = /timestampUtc[\\":]*([0-9T:+-]+)[\\",]*reportsValue[\\":]*(-?\d+)[\\",]*baselineValue[\\":]*(-?\d+)/g;
+  const reports = [];
+  const baseline = [];
+  let match;
+  while ((match = re.exec(data)) !== null) {
+    reports.push({ date: match[1], value: +match[2] });
+    baseline.push({ date: match[1], value: +match[3] });
+  }
+  return { reports, baseline };
 }
 
 /**
@@ -86,9 +102,7 @@ async function downdetector(company, domain = 'com') {
       throw Error('Invalid input');
     }
     const data = await callDowndetector(company, domain);
-    const scriptContent = getScriptContent(data);
-    const chartPoints = getChartPointsString(scriptContent);
-    const { reports, baseline } = getChartPointsObject(chartPoints);
+    const { reports, baseline } = getChartPointsObject(data);
     return { reports, baseline };
   } catch (err) {
     console.error(err.message);

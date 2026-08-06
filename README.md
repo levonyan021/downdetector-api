@@ -10,6 +10,12 @@ It might not work sometimes (expecially .com domain) due to the website being pr
 ### Install
 `npm i downdetector-api`
 
+This package uses [`puppeteer-core`](https://pptr.dev/), which does **not** download its own Chromium. You need an existing Chrome/Chromium (or Edge) installed on the machine. Common install paths on Windows, macOS and Linux are detected automatically. To force a specific browser, set the `PUPPETEER_EXECUTABLE_PATH` (or `CHROME_PATH`) environment variable:
+
+```bash
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome node app.js
+```
+
 ### Example
 ```js
 const { downdetector } = require('downdetector-api');

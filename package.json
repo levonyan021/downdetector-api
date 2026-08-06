@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "lint": "eslint ./",
-    "test": "nyc mocha --timeout 5000 --exit",
-    "coverage": "nyc --reporter=lcov --reporter=text mocha --timeout 5000 --exit"
+    "test": "nyc mocha --timeout 30000 --exit",
+    "coverage": "nyc --reporter=lcov --reporter=text mocha --timeout 30000 --exit"
   },
   "repository": {
     "type": "git",
@@ -28,8 +28,7 @@
   },
   "homepage": "https://github.com/DavideViolante/downdetector-api#readme",
   "dependencies": {
-    "cheerio": "^1.0.0-rc.12",
-    "puppeteer": "^24.2.1"
+    "puppeteer-core": "^24.2.1"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
