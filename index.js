@@ -43,12 +43,12 @@ function findChrome() {
 }
 
 /**
- * Call Downdetector website and get the page content
- * @param {string} company Company to get the data for
- * @param {string} domain Domain suffix of downdetector website (eg: com)
+ * Open a Downdetector URL in a headless browser and return the page HTML.
+ * A real browser is used because the site is protected by Cloudflare.
+ * @param {string} url The URL to fetch
  * @return {Promise<string>} The page content
  */
-async function callDowndetector(company, domain) {
+async function getPageContent(url) {
   const options = {
     executablePath: findChrome(),
     headless: true,
@@ -59,13 +59,22 @@ async function callDowndetector(company, domain) {
     const page = await browser.newPage();
     // eslint-disable-next-line max-len
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36');
-    const url = `https://downdetector.${domain}/status/${company}/`;
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     const content = await page.content();
     return content;
   } finally {
     await browser.close();
   }
+}
+
+/**
+ * Call Downdetector website and get the status page content for a company
+ * @param {string} company Company to get the data for
+ * @param {string} domain Domain suffix of downdetector website (eg: com)
+ * @return {Promise<string>} The page content
+ */
+function callDowndetector(company, domain) {
+  return getPageContent(`https://downdetector.${domain}/status/${company}/`);
 }
 
 /**
@@ -109,4 +118,26 @@ async function downdetector(company, domain = 'com') {
   }
 }
 
+/**
+ * Get the list of all company slugs available on a Downdetector domain.
+ * Slugs are the identifiers used by downdetector() and in the /status/ URLs.
+ * @param {string} [domain] Downdetector domain to use (default is 'com')
+ * @return {Promise<Array<string>>} Sorted array of unique company slugs
+ */
+async function getCompanies(domain = 'com') {
+  try {
+    const data = await getPageContent(`https://downdetector.${domain}/companies/`);
+    const re = /\/status\/([^/"'\\]+)/g;
+    const slugs = new Set();
+    let match;
+    while ((match = re.exec(data)) !== null) {
+      slugs.add(match[1]);
+    }
+    return [...slugs].sort();
+  } catch (err) {
+    console.error(err.message);
+  }
+}
+
 exports.downdetector = downdetector;
+exports.getCompanies = getCompanies;

@@ -1,6 +1,6 @@
 process.env.NODE_ENV = 'test';
 const assert = require('assert');
-const { downdetector } = require('../index');
+const { downdetector, getCompanies } = require('../index');
 
 describe('Tests for Downdetector.com unofficial APIs', () => {
   it('should return undefined if input is wrong', async () => {
@@ -29,5 +29,12 @@ describe('Tests for Downdetector.com unofficial APIs', () => {
     assert.ok(baseline.length);
     assert.strictEqual(reports.length, 96);
     assert.strictEqual(baseline.length, 96);
+  });
+
+  it('should return the list of company slugs', async () => {
+    const companies = await getCompanies('com');
+    assert.ok(Array.isArray(companies));
+    assert.ok(companies.length > 100);
+    assert.ok(companies.includes('facebook'));
   });
 });

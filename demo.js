@@ -1,6 +1,10 @@
 const { downdetector } = require('./index');
 
-// UTC ISO ժամանակը -> տեղական ժամ (համակարգի timezone-ով, օր. Հայաստան +4)
+/**
+ * UTC ISO ժամանակը -> տեղական ժամ (համակարգի timezone-ով, օր. Հայաստան +4)
+ * @param {string} iso UTC ISO date string
+ * @return {string} Local time string
+ */
 function toLocal(iso) {
   return new Date(iso).toLocaleString('hy-AM', { hour12: false });
 }
@@ -34,7 +38,8 @@ const domain = process.argv[3] || 'com';
   console.log('\n=== ՎԵՐՋԻՆ 5 ԿԵՏ (տեղական ժամ | reports vs baseline) ===');
   reports.slice(-5).forEach((r, i) => {
     const b = baseline[baseline.length - 5 + i];
-    console.log(`${toLocal(r.date)}  reports: ${String(r.value).padStart(4)}  |  baseline: ${b.value}`);
+    const val = String(r.value).padStart(4);
+    console.log(`${toLocal(r.date)}  reports: ${val}  |  baseline: ${b.value}`);
   });
 
   console.log('');
